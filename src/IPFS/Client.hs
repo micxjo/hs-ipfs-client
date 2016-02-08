@@ -101,18 +101,20 @@ getRemoteIdentity :: PeerID -> EitherT ServantError IO PeerIdentity
 getRemoteIdentity t = getPeerIdentity (Just t)
 
 getKnownAddrs :: EitherT ServantError IO (HashMap PeerID (Vector Multiaddr))
+getLocalAddrs :: EitherT ServantError IO (Vector Multiaddr)
 
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
            ("peers" :> Get '[JSON] (Vector Multiaddr))
-      :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))))
+      :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))
+      :<|> ("addrs" :> "local" :> Get '[JSON] (Vector Multiaddr))))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
 api = Proxy
 
 (getVersion
- :<|> (getPeers :<|> getKnownAddrs)
+ :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
