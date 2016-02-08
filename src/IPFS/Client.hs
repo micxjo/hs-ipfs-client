@@ -12,13 +12,16 @@ import           Control.Monad (forM)
 
 import           Control.Lens
 import           Control.Monad.Trans.Either (EitherT)
-import           Data.Aeson
-import           Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.Aeson as Aeson
+import           Data.Aeson hiding (Object)
+import           Data.ByteString.Builder (toLazyByteString)
+import           Data.ByteString.Lazy (ByteString)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import           Data.Hashable (Hashable)
 import           Data.Proxy (Proxy(..))
 import           Data.Text (Text)
+import           Data.Text.Encoding (encodeUtf8Builder)
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
 import           Servant.API
@@ -35,7 +38,7 @@ instance FromJSON Multiaddr where
 instance FromJSON (Vector Multiaddr) where
   -- Sometimes a list of multiaddrs comes wrapped in an object's "Strings"
   -- key, e.g. for swarm/peers.
-  parseJSON (Object o) = do
+  parseJSON (Aeson.Object o) = do
     v <- o .: "Strings"
     V.mapM parseJSON v
 
@@ -111,10 +114,38 @@ instance FromJSON ObjectStat where
     _cumulativeSize <- o .: "CumulativeSize"
     pure ObjectStat{..}
 
+data ObjectLink = ObjectLink
+                  { _linkedName :: !Text
+                  , _linkedHash :: !Multihash
+                  , _linkedSize :: !Int
+                  } deriving (Eq, Show)
+
+makeLenses ''ObjectLink
+
+instance FromJSON ObjectLink where
+  parseJSON = withObject "objectlink" $ \o -> do
+    _linkedName <- o .: "Name"
+    _linkedHash <- o .: "Hash"
+    _linkedSize <- o .: "Size"
+    pure ObjectLink{..}
+
 data Version = Version
                { _version :: !Text
                , _commit :: !Text
                } deriving (Eq, Show)
+
+data Object = Object
+              { _objectData :: !ByteString
+              , _objectLinks :: !(Vector ObjectLink)
+              } deriving (Eq, Show)
+
+makeLenses ''Object
+
+instance FromJSON Object where
+  parseJSON = withObject "object" $ \o -> do
+    _objectData <- toLazyByteString . encodeUtf8Builder <$> o .: "Data"
+    _objectLinks <- o .: "Links"
+    pure Object{..}
 
 makeLenses ''Version
 
@@ -152,6 +183,7 @@ getLocalAddrs :: EitherT ServantError IO (Vector Multiaddr)
 getBlock :: Multihash -> EitherT ServantError IO ByteString
 
 getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
+getObject :: Multihash -> EitherT ServantError IO Object
 
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
@@ -163,7 +195,8 @@ type API = "api" :> "v0" :> (
            ("get" :> Capture "blockhash" Multihash
                   :> Get '[BlockEncoding] ByteString)))
   :<|> ("object" :> (
-           ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)))
+           ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)
+      :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -172,6 +205,6 @@ api = Proxy
 (getVersion
  :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
  :<|> getBlock
- :<|> getObjectStat
+ :<|> (getObjectStat :<|> getObject)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
