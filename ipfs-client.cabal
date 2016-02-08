@@ -1,0 +1,51 @@
+name:                ipfs-client
+version:             0.1.0.0
+synopsis:            A client for the IPFS router API.
+description:         A client for the IPFS router API.
+homepage:            http://github.com/micxjo/hs-ipfs-client
+license:             BSD3
+license-file:        LICENSE
+author:              Micxjo Funkcio <micxjo@fastmail.com>
+maintainer:          Micxjo Funkcio <micxjo@fastmail.com>
+copyright:           (c) 2016 Micxjo Funkcio
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     IPFS.Client
+  ghc-options:         -Wall -fwarn-incomplete-uni-patterns
+  build-depends:       base >= 4.7 && < 5
+                     , mtl
+                     , bytestring
+                     , text
+                     , containers
+                     , unordered-containers
+                     , hashable
+                     , vector
+                     , either
+                     , errors
+                     , aeson
+                     , lens
+                     , servant
+                     , servant-client
+  default-language:    Haskell2010
+
+test-suite ipfs-client-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base >= 4.7 && < 5
+                     , bytestring
+                     , ipfs-client
+                     , text
+                     , vector
+                     , tasty
+                     , tasty-hunit
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/micxjo/hs-ipfs-client
