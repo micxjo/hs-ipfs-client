@@ -129,6 +129,19 @@ instance FromJSON ObjectLink where
     _linkedSize <- o .: "Size"
     pure ObjectLink{..}
 
+instance FromJSON (Vector ObjectLink) where
+  -- Support pulling from an object with a "Links" key, as returned
+  -- by object/links.
+  -- Is this appropriate? Should we break the objects/links response
+  -- handling into a newtype to make this behaviour more transparent?
+  parseJSON (Aeson.Object o) = do
+    links <- o .: "Links"
+    parseJSON links
+
+  parseJSON (Array a) = V.mapM parseJSON a
+
+  parseJSON _ = fail "expected object or array"
+
 data Version = Version
                { _version :: !Text
                , _commit :: !Text
@@ -184,6 +197,7 @@ getBlock :: Multihash -> EitherT ServantError IO ByteString
 
 getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
 getObject :: Multihash -> EitherT ServantError IO Object
+getObjectLinks :: Multihash -> EitherT ServantError IO (Vector ObjectLink)
 
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
@@ -196,7 +210,9 @@ type API = "api" :> "v0" :> (
                   :> Get '[BlockEncoding] ByteString)))
   :<|> ("object" :> (
            ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)
-      :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)))
+      :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)
+      :<|> ("links" :> Capture "objhash" Multihash
+                    :> Get '[JSON] (Vector ObjectLink))))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -205,6 +221,6 @@ api = Proxy
 (getVersion
  :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
  :<|> getBlock
- :<|> (getObjectStat :<|> getObject)
+ :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
