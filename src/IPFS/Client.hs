@@ -68,13 +68,17 @@ instance FromJSON PeerID where
 instance ToText PeerID where
   toText (PeerID t) = t
 
+kvApM :: Monad m => ((a -> b), (c -> m d)) -> (a, c) -> m (b, d)
+kvApM (f1, f2) (a, c) = do
+  let b = f1 a
+  d <- f2 c
+  pure (b, d)
+
 instance FromJSON (HashMap PeerID (Vector Multiaddr)) where
   parseJSON = withObject "address reply" $ \o -> do
     peers <- o .: "Addrs"
     peers & withObject "peer-address map" (\peerObj ->
-      HM.fromList <$> forM (HM.toList peerObj) (\(pid, ma) ->
-                              do ma' <- parseJSON ma
-                                 pure (PeerID pid, ma')))
+      HM.fromList <$> forM (HM.toList peerObj) (kvApM (PeerID, parseJSON)))
 
 data PeerIdentity = PeerIdentity
                 { _peerID :: !PeerID
@@ -168,6 +172,38 @@ instance FromJSON Version where
     _commit <- o .: "Commit"
     pure Version{..}
 
+data PinType = Direct
+             | Indirect
+             | Recursive
+             | All
+             deriving (Eq, Show)
+
+instance FromJSON PinType where
+  parseJSON (Aeson.Object o) = do
+    pt <- o .: "Type"
+    parseJSON pt
+
+  parseJSON (String s)
+    | s == "direct" = pure Direct
+    | s == "indirect" = pure Indirect
+    | s == "recursive" = pure Recursive
+    | s == "all" = pure All
+    | otherwise = fail "unknown pin type"
+
+  parseJSON _ = fail "expected string or object"
+
+instance ToText PinType where
+  toText Direct = "direct"
+  toText Indirect = "indirect"
+  toText Recursive = "recursive"
+  toText All = "all"
+
+instance FromJSON (HashMap Multihash PinType) where
+  parseJSON = withObject "pin map" $ \o -> do
+    pins <- o .: "Keys"
+    pins & withObject "pin map" (\pinsObj ->
+      HM.fromList <$> forM (HM.toList pinsObj) (kvApM (Multihash, parseJSON)))
+
 data BlockStat = BlockStat
                  { _blockHash :: !Multihash
                  , _blockSize :: !Int
@@ -213,6 +249,8 @@ getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
 getObject :: Multihash -> EitherT ServantError IO Object
 getObjectLinks :: Multihash -> EitherT ServantError IO (Vector ObjectLink)
 
+getPins :: EitherT ServantError IO (HashMap Multihash PinType)
+
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
@@ -228,6 +266,7 @@ type API = "api" :> "v0" :> (
       :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)
       :<|> ("links" :> Capture "objhash" Multihash
                     :> Get '[JSON] (Vector ObjectLink))))
+  :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -237,5 +276,6 @@ api = Proxy
  :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
  :<|> (getBlock :<|> getBlockStat)
  :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
+ :<|> getPins
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
