@@ -12,10 +12,12 @@ import           Control.Monad (forM)
 import           Control.Lens
 import           Control.Monad.Trans.Either (EitherT)
 import           Data.Aeson
+import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
-import           Data.Hashable
-import           Data.Proxy
+import           Data.Hashable (Hashable)
+import           Data.Proxy (Proxy(..))
 import           Data.Text (Text)
+import           Data.Vector (Vector)
 import qualified Data.Vector as V
 import           Servant.API
 import           Servant.Client
@@ -28,7 +30,7 @@ makeLenses ''Multiaddr
 instance FromJSON Multiaddr where
   parseJSON = withText "multiaddr" (pure . Multiaddr)
 
-instance FromJSON (V.Vector Multiaddr) where
+instance FromJSON (Vector Multiaddr) where
   -- Sometimes a list of multiaddrs comes wrapped in an object's "Strings"
   -- key, e.g. for swarm/peers.
   parseJSON (Object o) = do
@@ -50,7 +52,7 @@ instance FromJSON PeerID where
 instance ToText PeerID where
   toText (PeerID t) = t
 
-instance FromJSON (HM.HashMap PeerID (V.Vector Multiaddr)) where
+instance FromJSON (HashMap PeerID (Vector Multiaddr)) where
   parseJSON = withObject "address reply" $ \o -> do
     peers <- o .: "Addrs"
     peers & withObject "peer-address map" (\peerObj ->
@@ -89,7 +91,7 @@ instance FromJSON Version where
     pure Version{..}
 
 getVersion :: EitherT ServantError IO Version
-getPeers :: EitherT ServantError IO (V.Vector Multiaddr)
+getPeers :: EitherT ServantError IO (Vector Multiaddr)
 getPeerIdentity :: Maybe PeerID -> EitherT ServantError IO PeerIdentity
 
 getLocalIdentity :: EitherT ServantError IO PeerIdentity
@@ -98,19 +100,19 @@ getLocalIdentity = getPeerIdentity Nothing
 getRemoteIdentity :: PeerID -> EitherT ServantError IO PeerIdentity
 getRemoteIdentity t = getPeerIdentity (Just t)
 
-getAddrs :: EitherT ServantError IO (HM.HashMap PeerID (V.Vector Multiaddr))
+getKnownAddrs :: EitherT ServantError IO (HashMap PeerID (Vector Multiaddr))
 
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
-           ("peers" :> Get '[JSON] (V.Vector Multiaddr))
-      :<|> ("addrs" :> Get '[JSON] (HM.HashMap PeerID (V.Vector Multiaddr)))))
+           ("peers" :> Get '[JSON] (Vector Multiaddr))
+      :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
 api = Proxy
 
 (getVersion
- :<|> (getPeers :<|> getAddrs)
+ :<|> (getPeers :<|> getKnownAddrs)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
