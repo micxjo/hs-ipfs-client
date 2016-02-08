@@ -96,7 +96,7 @@ instance FromJSON PeerIdentity where
 data ObjectStat = ObjectStat
                   { _objectHash :: !Multihash
                   , _numLinks :: !Int
-                  , _blockSize :: !Int
+                  , _objectBlockSize :: !Int
                   , _linksSize :: !Int
                   , _dataSize :: !Int
                   , _cumulativeSize :: !Int
@@ -108,7 +108,7 @@ instance FromJSON ObjectStat where
   parseJSON = withObject "objectstat" $ \o -> do
     _objectHash <- o .: "Hash"
     _numLinks <- o .: "NumLinks"
-    _blockSize <- o .: "BlockSize"
+    _objectBlockSize <- o .: "BlockSize"
     _linksSize <- o .: "LinksSize"
     _dataSize <- o .: "DataSize"
     _cumulativeSize <- o .: "CumulativeSize"
@@ -168,6 +168,19 @@ instance FromJSON Version where
     _commit <- o .: "Commit"
     pure Version{..}
 
+data BlockStat = BlockStat
+                 { _blockHash :: !Multihash
+                 , _blockSize :: !Int
+                 } deriving (Eq, Show)
+
+makeLenses ''BlockStat
+
+instance FromJSON BlockStat where
+  parseJSON = withObject "blockstat" $ \o -> do
+    _blockHash <- o .: "Key"
+    _blockSize <- o .: "Size"
+    pure BlockStat{..}
+
 -- Raw blocks are sent as binary but with a "text/plain" content type.
 -- The OctetStream encoding instance won't accept "text/plain" and
 -- there's no (MimeUnrender PlainText ByteString) instance, so we
@@ -194,6 +207,7 @@ getKnownAddrs :: EitherT ServantError IO (HashMap PeerID (Vector Multiaddr))
 getLocalAddrs :: EitherT ServantError IO (Vector Multiaddr)
 
 getBlock :: Multihash -> EitherT ServantError IO ByteString
+getBlockStat :: Multihash -> EitherT ServantError IO BlockStat
 
 getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
 getObject :: Multihash -> EitherT ServantError IO Object
@@ -207,7 +221,8 @@ type API = "api" :> "v0" :> (
       :<|> ("addrs" :> "local" :> Get '[JSON] (Vector Multiaddr))))
   :<|> ("block" :> (
            ("get" :> Capture "blockhash" Multihash
-                  :> Get '[BlockEncoding] ByteString)))
+                  :> Get '[BlockEncoding] ByteString)
+      :<|> ("stat" :> Capture "blockhash" Multihash :> Get '[JSON] BlockStat)))
   :<|> ("object" :> (
            ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)
       :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)
@@ -220,7 +235,7 @@ api = Proxy
 
 (getVersion
  :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
- :<|> getBlock
+ :<|> (getBlock :<|> getBlockStat)
  :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
