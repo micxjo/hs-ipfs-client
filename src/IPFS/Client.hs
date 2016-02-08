@@ -10,18 +10,20 @@ module IPFS.Client where
 
 import           Control.Monad (forM)
 
+import           Control.Error (fmapL)
 import           Control.Lens
 import           Control.Monad.Trans.Either (EitherT)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson hiding (Object)
 import           Data.ByteString.Builder (toLazyByteString)
-import           Data.ByteString.Lazy (ByteString)
+import           Data.ByteString.Lazy (ByteString, toStrict)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import           Data.Hashable (Hashable)
 import           Data.Proxy (Proxy(..))
 import           Data.Text (Text)
-import           Data.Text.Encoding (encodeUtf8Builder)
+import qualified Data.Text as T
+import           Data.Text.Encoding (decodeUtf8', encodeUtf8Builder)
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
 import           Servant.API
@@ -217,6 +219,19 @@ instance FromJSON BlockStat where
     _blockSize <- o .: "Size"
     pure BlockStat{..}
 
+-- Servant's PlainText won't accept responses without a charset, which
+-- go-ipfs doesn't supply.
+data PlainerText = PlainerText
+
+instance Accept PlainerText where
+  contentType _ = "text/plain"
+
+-- Unrenderer for a newline-separated list of Multihashes
+instance MimeUnrender PlainerText (Vector Multihash) where
+  mimeUnrender _ bs = do
+    t <- fmapL show (decodeUtf8' (toStrict bs))
+    pure (V.fromList (map Multihash (T.lines t)))
+
 -- Raw blocks are sent as binary but with a "text/plain" content type.
 -- The OctetStream encoding instance won't accept "text/plain" and
 -- there's no (MimeUnrender PlainText ByteString) instance, so we
@@ -251,6 +266,8 @@ getObjectLinks :: Multihash -> EitherT ServantError IO (Vector ObjectLink)
 
 getPins :: EitherT ServantError IO (HashMap Multihash PinType)
 
+getLocalRefs :: EitherT ServantError IO (Vector Multihash)
+
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
@@ -267,6 +284,7 @@ type API = "api" :> "v0" :> (
       :<|> ("links" :> Capture "objhash" Multihash
                     :> Get '[JSON] (Vector ObjectLink))))
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
+  :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -277,5 +295,6 @@ api = Proxy
  :<|> (getBlock :<|> getBlockStat)
  :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
  :<|> getPins
+ :<|> getLocalRefs
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
