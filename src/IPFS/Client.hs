@@ -41,7 +41,18 @@ instance FromJSON (Vector Multiaddr) where
 
   parseJSON _ = fail "expected an object or array"
 
-newtype PeerID = PeerID { _multihash :: Text }
+newtype Multihash = Multihash { _multihash :: Text }
+                  deriving (Eq, Show, Hashable)
+
+makeLenses ''Multihash
+
+instance FromJSON Multihash where
+  parseJSON = withText "multihash" (pure . Multihash)
+
+instance ToText Multihash where
+  toText (Multihash t) = t
+
+newtype PeerID = PeerID { _peerHash :: Text }
                deriving (Eq, Show, Hashable)
 
 makeLenses ''PeerID
@@ -77,6 +88,27 @@ instance FromJSON PeerIdentity where
     _protocolVersion <- o .: "ProtocolVersion"
     pure PeerIdentity{..}
 
+data ObjectStat = ObjectStat
+                  { _objectHash :: !Multihash
+                  , _numLinks :: !Int
+                  , _blockSize :: !Int
+                  , _linksSize :: !Int
+                  , _dataSize :: !Int
+                  , _cumulativeSize :: !Int
+                  } deriving (Eq, Show)
+
+makeLenses ''ObjectStat
+
+instance FromJSON ObjectStat where
+  parseJSON = withObject "objectstat" $ \o -> do
+    _objectHash <- o .: "Hash"
+    _numLinks <- o .: "NumLinks"
+    _blockSize <- o .: "BlockSize"
+    _linksSize <- o .: "LinksSize"
+    _dataSize <- o .: "DataSize"
+    _cumulativeSize <- o .: "CumulativeSize"
+    pure ObjectStat{..}
+
 data Version = Version
                { _version :: !Text
                , _commit :: !Text
@@ -103,12 +135,16 @@ getRemoteIdentity t = getPeerIdentity (Just t)
 getKnownAddrs :: EitherT ServantError IO (HashMap PeerID (Vector Multiaddr))
 getLocalAddrs :: EitherT ServantError IO (Vector Multiaddr)
 
+getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
+
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
            ("peers" :> Get '[JSON] (Vector Multiaddr))
       :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))
       :<|> ("addrs" :> "local" :> Get '[JSON] (Vector Multiaddr))))
+  :<|> ("object" :> (
+           ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -116,5 +152,6 @@ api = Proxy
 
 (getVersion
  :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
+ :<|> getObjectStat
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
