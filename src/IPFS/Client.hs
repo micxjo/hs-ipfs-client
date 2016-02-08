@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
@@ -12,6 +13,7 @@ import           Control.Monad (forM)
 import           Control.Lens
 import           Control.Monad.Trans.Either (EitherT)
 import           Data.Aeson
+import           Data.ByteString.Lazy.Char8 (ByteString)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import           Data.Hashable (Hashable)
@@ -122,6 +124,18 @@ instance FromJSON Version where
     _commit <- o .: "Commit"
     pure Version{..}
 
+-- Raw blocks are sent as binary but with a "text/plain" content type.
+-- The OctetStream encoding instance won't accept "text/plain" and
+-- there's no (MimeUnrender PlainText ByteString) instance, so we
+-- create this simple encoding.
+data BlockEncoding = BlockEncoding
+
+instance Accept BlockEncoding where
+  contentType _ = "text/plain"
+
+instance MimeUnrender BlockEncoding ByteString where
+  mimeUnrender _ = pure
+
 getVersion :: EitherT ServantError IO Version
 getPeers :: EitherT ServantError IO (Vector Multiaddr)
 getPeerIdentity :: Maybe PeerID -> EitherT ServantError IO PeerIdentity
@@ -135,6 +149,8 @@ getRemoteIdentity t = getPeerIdentity (Just t)
 getKnownAddrs :: EitherT ServantError IO (HashMap PeerID (Vector Multiaddr))
 getLocalAddrs :: EitherT ServantError IO (Vector Multiaddr)
 
+getBlock :: Multihash -> EitherT ServantError IO ByteString
+
 getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
 
 type API = "api" :> "v0" :> (
@@ -143,6 +159,9 @@ type API = "api" :> "v0" :> (
            ("peers" :> Get '[JSON] (Vector Multiaddr))
       :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))
       :<|> ("addrs" :> "local" :> Get '[JSON] (Vector Multiaddr))))
+  :<|> ("block" :> (
+           ("get" :> Capture "blockhash" Multihash
+                  :> Get '[BlockEncoding] ByteString)))
   :<|> ("object" :> (
            ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
@@ -152,6 +171,7 @@ api = Proxy
 
 (getVersion
  :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
+ :<|> getBlock
  :<|> getObjectStat
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
