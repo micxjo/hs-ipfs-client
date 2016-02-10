@@ -150,8 +150,20 @@ instance FromJSON (Vector ObjectLink) where
 
 data Version = Version
                { _version :: !Text
-               , _commit :: !Text
+               , _commit :: !(Maybe Text)
                } deriving (Eq, Show)
+
+makeLenses ''Version
+
+instance FromJSON Version where
+  parseJSON = withObject "version" $ \o -> do
+    _version <- o .: "Version"
+    commitText <- o .:? "Commit"
+    let _commit = case commitText of
+          Nothing -> Nothing
+          Just "" -> Nothing
+          _ -> commitText
+    pure Version{..}
 
 data Object = Object
               { _objectData :: !ByteString
@@ -165,14 +177,6 @@ instance FromJSON Object where
     _objectData <- toLazyByteString . encodeUtf8Builder <$> o .: "Data"
     _objectLinks <- o .: "Links"
     pure Object{..}
-
-makeLenses ''Version
-
-instance FromJSON Version where
-  parseJSON = withObject "version" $ \o -> do
-    _version <- o .: "Version"
-    _commit <- o .: "Commit"
-    pure Version{..}
 
 data PinType = Direct
              | Indirect
