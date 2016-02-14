@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-module IPFS.Client where
+module Network.IPFS.Client where
 
 import           Control.Monad (forM)
 

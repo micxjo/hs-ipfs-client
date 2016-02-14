@@ -14,7 +14,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     IPFS.Client
+  exposed-modules:     Network.IPFS.Client
   ghc-options:         -Wall -fwarn-incomplete-uni-patterns
   build-depends:       base >= 4.7 && < 5
                      , mtl
