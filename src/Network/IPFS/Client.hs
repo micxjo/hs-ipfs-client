@@ -283,6 +283,12 @@ addBootstrapPeer_ :: Maybe Multiaddr
 addBootstrapPeer :: Multiaddr -> EitherT ServantError IO ()
 addBootstrapPeer ma = addBootstrapPeer_ (Just ma) >> pure ()
 
+deleteBootstrapPeer_ :: Maybe Multiaddr
+                     -> EitherT ServantError IO (Vector Multiaddr)
+
+deleteBootstrapPeer :: Multiaddr -> EitherT ServantError IO ()
+deleteBootstrapPeer ma = deleteBootstrapPeer_ (Just ma) >> pure ()
+
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
@@ -303,7 +309,9 @@ type API = "api" :> "v0" :> (
   :<|> ("bootstrap" :> (
            (Get '[JSON] (Vector Multiaddr))
       :<|> ("add" :> QueryParam "arg" Multiaddr
-                  :> Post '[JSON] (Vector Multiaddr))))
+                  :> Post '[JSON] (Vector Multiaddr))
+      :<|> ("rm" :> QueryParam "arg" Multiaddr
+                 :> Post '[JSON] (Vector Multiaddr))))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -315,6 +323,6 @@ api = Proxy
  :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
  :<|> getPins
  :<|> getLocalRefs
- :<|> (getBootstrapList :<|> addBootstrapPeer_)
+ :<|> (getBootstrapList :<|> addBootstrapPeer_ :<|> deleteBootstrapPeer_)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
