@@ -8,6 +8,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Network.IPFS.Client where
 
+import           Control.Applicative ((<|>))
 import           Control.Monad (forM)
 
 import           Control.Error (fmapL)
@@ -39,9 +40,9 @@ instance FromJSON Multiaddr where
 
 instance FromJSON (Vector Multiaddr) where
   -- Sometimes a list of multiaddrs comes wrapped in an object's "Strings"
-  -- key, e.g. for swarm/peers.
+  -- or "Peers" key, e.g. for swarm/peers.
   parseJSON (Aeson.Object o) = do
-    v <- o .: "Strings"
+    v <- o .: "Peers" <|> o .: "Strings"
     V.mapM parseJSON v
 
   parseJSON (Array a) = V.mapM parseJSON a
@@ -272,6 +273,8 @@ getPins :: EitherT ServantError IO (HashMap Multihash PinType)
 
 getLocalRefs :: EitherT ServantError IO (Vector Multihash)
 
+getBootstrapList :: EitherT ServantError IO (Vector Multiaddr)
+
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
@@ -289,6 +292,7 @@ type API = "api" :> "v0" :> (
                     :> Get '[JSON] (Vector ObjectLink))))
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
+  :<|> ("bootstrap" :> Get '[JSON] (Vector Multiaddr))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -300,5 +304,6 @@ api = Proxy
  :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
  :<|> getPins
  :<|> getLocalRefs
+ :<|> getBootstrapList
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
