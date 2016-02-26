@@ -38,6 +38,9 @@ makeLenses ''Multiaddr
 instance FromJSON Multiaddr where
   parseJSON = withText "multiaddr" (pure . Multiaddr)
 
+instance ToText Multiaddr where
+  toText (Multiaddr ma) = ma
+
 instance FromJSON (Vector Multiaddr) where
   -- Sometimes a list of multiaddrs comes wrapped in an object's "Strings"
   -- or "Peers" key, e.g. for swarm/peers.
@@ -274,6 +277,11 @@ getPins :: EitherT ServantError IO (HashMap Multihash PinType)
 getLocalRefs :: EitherT ServantError IO (Vector Multihash)
 
 getBootstrapList :: EitherT ServantError IO (Vector Multiaddr)
+addBootstrapPeer_ :: Maybe Multiaddr
+                  -> EitherT ServantError IO (Vector Multiaddr)
+
+addBootstrapPeer :: Multiaddr -> EitherT ServantError IO ()
+addBootstrapPeer ma = addBootstrapPeer_ (Just ma) >> pure ()
 
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
@@ -292,7 +300,10 @@ type API = "api" :> "v0" :> (
                     :> Get '[JSON] (Vector ObjectLink))))
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
-  :<|> ("bootstrap" :> Get '[JSON] (Vector Multiaddr))
+  :<|> ("bootstrap" :> (
+           (Get '[JSON] (Vector Multiaddr))
+      :<|> ("add" :> QueryParam "arg" Multiaddr
+                  :> Post '[JSON] (Vector Multiaddr))))
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -304,6 +315,6 @@ api = Proxy
  :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
  :<|> getPins
  :<|> getLocalRefs
- :<|> getBootstrapList
+ :<|> (getBootstrapList :<|> addBootstrapPeer_)
  :<|> getPeerIdentity) =
   client api (BaseUrl Http "localhost" 5001)
