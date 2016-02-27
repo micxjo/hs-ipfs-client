@@ -30,7 +30,8 @@ import           Data.Vector (Vector)
 import qualified Data.Vector as V
 import           Servant.API
 import           Servant.Client hiding (Client)
-import           Servant.Common.Req (Req, defReq, appendToPath)
+import           Servant.Common.Req (Req)
+import qualified Servant.Common.Req as Req
 
 type IPFSError = ServantError
 
@@ -263,9 +264,10 @@ type API = (
       :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))
       :<|> ("addrs" :> "local" :> Get '[JSON] (Vector Multiaddr))))
   :<|> ("block" :> (
-           ("get" :> Capture "blockhash" Multihash
+           ("get" :> QueryParam "arg" Multihash
                   :> Get '[BlockEncoding] ByteString)
-      :<|> ("stat" :> Capture "blockhash" Multihash :> Get '[JSON] BlockStat)))
+      :<|> ("stat" :> QueryParam "arg" Multihash
+                   :> Get '[JSON] BlockStat)))
   :<|> ("object" :> (
            ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)
       :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)
@@ -292,8 +294,8 @@ data Client = Client
                , _getKnownAddrs :: ServantReq (
                    HashMap PeerID (Vector Multiaddr))
                , _getLocalAddrs :: ServantReq (Vector Multiaddr)
-               , _getBlock :: Multihash -> ServantReq ByteString
-               , _getBlockStat :: Multihash -> ServantReq BlockStat
+               , _getBlock :: Maybe Multihash -> ServantReq ByteString
+               , _getBlockStat :: Maybe Multihash -> ServantReq BlockStat
 
                , _getObjectStat :: Multihash -> ServantReq ObjectStat
                , _getObject :: Multihash -> ServantReq Object
@@ -336,9 +338,12 @@ instance MonadTrans IPFST where
 
 type IPFS a = IPFST IO a
 
+baseReq :: Req
+baseReq = Req.addHeader "Prefer" ("status=200" :: Text) Req.defReq
+
 runIPFST :: MonadIO m => String -> Int -> IPFST m a -> m (Either IPFSError a)
 runIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
-  where cl = mkClient (appendToPath "api/v0" defReq) host port
+  where cl = mkClient (Req.appendToPath "api/v0" baseReq) host port
 
 runIPFS :: String -> Int -> IPFS a -> IO (Either IPFSError a)
 runIPFS = runIPFST
@@ -349,7 +354,7 @@ runBareIPFST :: MonadIO m
                 -> IPFST m a
                 -> m (Either IPFSError a)
 runBareIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
-  where cl = mkClient defReq host port
+  where cl = mkClient baseReq host port
 
 runBareIPFS :: String -> Int -> IPFS a -> IO (Either IPFSError a)
 runBareIPFS = runBareIPFST
@@ -375,10 +380,10 @@ getLocalAddrs :: IPFS (Vector Multiaddr)
 getLocalAddrs = request _getLocalAddrs
 
 getBlock :: Multihash -> IPFS ByteString
-getBlock mh = request (`_getBlock` mh)
+getBlock mh = request (`_getBlock` Just mh)
 
 getBlockStat :: Multihash -> IPFS BlockStat
-getBlockStat mh = request (`_getBlockStat` mh)
+getBlockStat mh = request (`_getBlockStat` Just mh)
 
 getObjectStat :: Multihash -> IPFS ObjectStat
 getObjectStat mh = request (`_getObjectStat` mh)

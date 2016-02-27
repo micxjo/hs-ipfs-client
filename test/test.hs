@@ -22,6 +22,16 @@ apiaryTests = testGroup "Apiary Tests"
 
   , testCase "getBootstrapList" $
       assertRequest getBootstrapList expectedBootstrapList
+
+  , testCase "getBlock" $ do
+      let mh = Multihash "QmT78zSuBmuS4z925WZfrqQ1qHaJ56DQaTfyMUF7F8ff5o"
+      assertRequest (getBlock mh) "hello world"
+
+  , testCase "getBlockStat" $ do
+      let mh = Multihash "QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
+      assertRequest (getBlockStat mh) BlockStat { _blockHash = mh
+                                                , _blockSize = 55
+                                                }
   ]
 
 expectedBootstrapList :: Vector Multiaddr
