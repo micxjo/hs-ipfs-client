@@ -274,7 +274,7 @@ type API = (
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
   :<|> ("bootstrap" :> (
-           (Get '[JSON] (Vector Multiaddr))
+           ("list" :> Get '[JSON] (Vector Multiaddr))
       :<|> ("add" :> QueryParam "arg" Multiaddr
                   :> Post '[JSON] (Vector Multiaddr))
       :<|> ("rm" :> QueryParam "arg" Multiaddr
