@@ -35,7 +35,7 @@ library
 test-suite ipfs-client-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  main-is:             Spec.hs
+  main-is:             test.hs
   build-depends:       base >= 4.7 && < 5
                      , bytestring
                      , ipfs-client

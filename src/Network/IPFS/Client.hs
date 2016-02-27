@@ -12,8 +12,8 @@ import           Control.Applicative ((<|>))
 
 import           Control.Error (fmapL)
 import           Control.Lens
-import           Control.Monad.Reader
 import           Control.Monad.Except
+import           Control.Monad.Reader
 import           Control.Monad.Trans.Either
 import qualified Data.Aeson as Aeson
 import           Data.Aeson hiding (Object)
@@ -30,6 +30,9 @@ import           Data.Vector (Vector)
 import qualified Data.Vector as V
 import           Servant.API
 import           Servant.Client hiding (Client)
+import           Servant.Common.Req (Req, defReq, appendToPath)
+
+type IPFSError = ServantError
 
 newtype Multiaddr = Multiaddr { _multiaddr :: Text }
                   deriving (Eq, Show, Hashable)
@@ -253,7 +256,7 @@ instance Accept BlockEncoding where
 instance MimeUnrender BlockEncoding ByteString where
   mimeUnrender _ = pure
 
-type API = "api" :> "v0" :> (
+type API = (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
            ("peers" :> Get '[JSON] (Vector Multiaddr))
@@ -305,8 +308,8 @@ data Client = Client
                , _getPeerIdentity :: Maybe PeerID -> ServantReq PeerIdentity
                }
 
-mkClient :: String -> Int -> Client
-mkClient host port = Client{..}
+mkClient :: Req -> String -> Int -> Client
+mkClient req host port = Client{..}
   where (_getVersion
          :<|> (_getPeers :<|> _getKnownAddrs :<|> _getLocalAddrs)
          :<|> (_getBlock :<|> _getBlockStat)
@@ -317,7 +320,7 @@ mkClient host port = Client{..}
           :<|> _addBootstrapPeer
           :<|> _deleteBootstrapPeer)
          :<|> _getPeerIdentity
-          ) = client api (BaseUrl Http host port)
+          ) = clientWithRoute api req (BaseUrl Http host port)
 
 newtype IPFST m a = IPFS { unIPFS :: ReaderT Client (EitherT ServantError m) a }
   deriving ( Functor
@@ -333,12 +336,23 @@ instance MonadTrans IPFST where
 
 type IPFS a = IPFST IO a
 
-runIPFST :: MonadIO m => String -> Int -> IPFST m a -> m (Either ServantError a)
+runIPFST :: MonadIO m => String -> Int -> IPFST m a -> m (Either IPFSError a)
 runIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
-  where cl = mkClient host port
+  where cl = mkClient (appendToPath "api/v0" defReq) host port
 
-runIPFS :: String -> Int -> IPFS a -> IO (Either ServantError a)
+runIPFS :: String -> Int -> IPFS a -> IO (Either IPFSError a)
 runIPFS = runIPFST
+
+runBareIPFST :: MonadIO m
+                => String
+                -> Int
+                -> IPFST m a
+                -> m (Either IPFSError a)
+runBareIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
+  where cl = mkClient defReq host port
+
+runBareIPFS :: String -> Int -> IPFS a -> IO (Either IPFSError a)
+runBareIPFS = runBareIPFST
 
 request :: Monad m => (Client -> EitherT ServantError m a) -> IPFST m a
 request cmd = do
