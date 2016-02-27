@@ -9,11 +9,12 @@
 module Network.IPFS.Client where
 
 import           Control.Applicative ((<|>))
-import           Control.Monad (forM)
 
 import           Control.Error (fmapL)
 import           Control.Lens
-import           Control.Monad.Trans.Either (EitherT)
+import           Control.Monad.Reader
+import           Control.Monad.Except
+import           Control.Monad.Trans.Either
 import qualified Data.Aeson as Aeson
 import           Data.Aeson hiding (Object)
 import           Data.ByteString.Builder (toLazyByteString)
@@ -28,7 +29,7 @@ import           Data.Text.Encoding (decodeUtf8', encodeUtf8Builder)
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
 import           Servant.API
-import           Servant.Client
+import           Servant.Client hiding (Client)
 
 newtype Multiaddr = Multiaddr { _multiaddr :: Text }
                   deriving (Eq, Show, Hashable)
@@ -252,43 +253,6 @@ instance Accept BlockEncoding where
 instance MimeUnrender BlockEncoding ByteString where
   mimeUnrender _ = pure
 
-getVersion :: EitherT ServantError IO Version
-getPeers :: EitherT ServantError IO (Vector Multiaddr)
-getPeerIdentity :: Maybe PeerID -> EitherT ServantError IO PeerIdentity
-
-getLocalIdentity :: EitherT ServantError IO PeerIdentity
-getLocalIdentity = getPeerIdentity Nothing
-
-getRemoteIdentity :: PeerID -> EitherT ServantError IO PeerIdentity
-getRemoteIdentity t = getPeerIdentity (Just t)
-
-getKnownAddrs :: EitherT ServantError IO (HashMap PeerID (Vector Multiaddr))
-getLocalAddrs :: EitherT ServantError IO (Vector Multiaddr)
-
-getBlock :: Multihash -> EitherT ServantError IO ByteString
-getBlockStat :: Multihash -> EitherT ServantError IO BlockStat
-
-getObjectStat :: Multihash -> EitherT ServantError IO ObjectStat
-getObject :: Multihash -> EitherT ServantError IO Object
-getObjectLinks :: Multihash -> EitherT ServantError IO (Vector ObjectLink)
-
-getPins :: EitherT ServantError IO (HashMap Multihash PinType)
-
-getLocalRefs :: EitherT ServantError IO (Vector Multihash)
-
-getBootstrapList :: EitherT ServantError IO (Vector Multiaddr)
-addBootstrapPeer_ :: Maybe Multiaddr
-                  -> EitherT ServantError IO (Vector Multiaddr)
-
-addBootstrapPeer :: Multiaddr -> EitherT ServantError IO ()
-addBootstrapPeer ma = addBootstrapPeer_ (Just ma) >> pure ()
-
-deleteBootstrapPeer_ :: Maybe Multiaddr
-                     -> EitherT ServantError IO (Vector Multiaddr)
-
-deleteBootstrapPeer :: Multiaddr -> EitherT ServantError IO ()
-deleteBootstrapPeer ma = deleteBootstrapPeer_ (Just ma) >> pure ()
-
 type API = "api" :> "v0" :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
@@ -317,12 +281,117 @@ type API = "api" :> "v0" :> (
 api :: Proxy API
 api = Proxy
 
-(getVersion
- :<|> (getPeers :<|> getKnownAddrs :<|> getLocalAddrs)
- :<|> (getBlock :<|> getBlockStat)
- :<|> (getObjectStat :<|> getObject :<|> getObjectLinks)
- :<|> getPins
- :<|> getLocalRefs
- :<|> (getBootstrapList :<|> addBootstrapPeer_ :<|> deleteBootstrapPeer_)
- :<|> getPeerIdentity) =
-  client api (BaseUrl Http "localhost" 5001)
+type ServantReq = EitherT ServantError IO
+
+data Client = Client
+              { _getVersion :: ServantReq Version
+               , _getPeers :: ServantReq (Vector Multiaddr)
+               , _getKnownAddrs :: ServantReq (
+                   HashMap PeerID (Vector Multiaddr))
+               , _getLocalAddrs :: ServantReq (Vector Multiaddr)
+               , _getBlock :: Multihash -> ServantReq ByteString
+               , _getBlockStat :: Multihash -> ServantReq BlockStat
+
+               , _getObjectStat :: Multihash -> ServantReq ObjectStat
+               , _getObject :: Multihash -> ServantReq Object
+               , _getObjectLinks :: Multihash -> ServantReq (Vector ObjectLink)
+               , _getPins :: ServantReq (HashMap Multihash PinType)
+               , _getLocalRefs :: ServantReq (Vector Multihash)
+               , _getBootstrapList :: ServantReq (Vector Multiaddr)
+               , _addBootstrapPeer :: Maybe Multiaddr
+                                   -> ServantReq (Vector Multiaddr)
+               , _deleteBootstrapPeer :: Maybe Multiaddr
+                                      -> ServantReq (Vector Multiaddr)
+               , _getPeerIdentity :: Maybe PeerID -> ServantReq PeerIdentity
+               }
+
+mkClient :: String -> Int -> Client
+mkClient host port = Client{..}
+  where (_getVersion
+         :<|> (_getPeers :<|> _getKnownAddrs :<|> _getLocalAddrs)
+         :<|> (_getBlock :<|> _getBlockStat)
+         :<|> (_getObjectStat :<|> _getObject :<|> _getObjectLinks)
+         :<|> _getPins
+         :<|> _getLocalRefs
+         :<|> (_getBootstrapList
+          :<|> _addBootstrapPeer
+          :<|> _deleteBootstrapPeer)
+         :<|> _getPeerIdentity
+          ) = client api (BaseUrl Http host port)
+
+newtype IPFST m a = IPFS { unIPFS :: ReaderT Client (EitherT ServantError m) a }
+  deriving ( Functor
+           , Applicative
+           , Monad
+           , MonadIO
+           , MonadReader Client
+           , MonadError ServantError
+           )
+
+instance MonadTrans IPFST where
+  lift = IPFS . lift . lift
+
+type IPFS a = IPFST IO a
+
+runIPFST :: MonadIO m => String -> Int -> IPFST m a -> m (Either ServantError a)
+runIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
+  where cl = mkClient host port
+
+runIPFS :: String -> Int -> IPFS a -> IO (Either ServantError a)
+runIPFS = runIPFST
+
+request :: Monad m => (Client -> EitherT ServantError m a) -> IPFST m a
+request cmd = do
+  c <- ask
+  resp <- lift (runEitherT (cmd c))
+  case resp of
+    Left l -> throwError l
+    Right r -> pure r
+
+getVersion :: IPFS Version
+getVersion = request _getVersion
+
+getPeers :: IPFS (Vector Multiaddr)
+getPeers = request _getPeers
+
+getKnownAddrs :: IPFS (HashMap PeerID (Vector Multiaddr))
+getKnownAddrs = request _getKnownAddrs
+
+getLocalAddrs :: IPFS (Vector Multiaddr)
+getLocalAddrs = request _getLocalAddrs
+
+getBlock :: Multihash -> IPFS ByteString
+getBlock mh = request (`_getBlock` mh)
+
+getBlockStat :: Multihash -> IPFS BlockStat
+getBlockStat mh = request (`_getBlockStat` mh)
+
+getObjectStat :: Multihash -> IPFS ObjectStat
+getObjectStat mh = request (`_getObjectStat` mh)
+
+getObject :: Multihash -> IPFS Object
+getObject mh = request (`_getObject` mh)
+
+getObjectLinks :: Multihash -> IPFS (Vector ObjectLink)
+getObjectLinks mh = request (`_getObjectLinks` mh)
+
+getPins :: IPFS (HashMap Multihash PinType)
+getPins = request _getPins
+
+getLocalRefs :: IPFS (Vector Multihash)
+getLocalRefs = request _getLocalRefs
+
+getBootstrapList :: IPFS (Vector Multiaddr)
+getBootstrapList = request _getBootstrapList
+
+addBootstrapPeer :: Multiaddr -> IPFS ()
+addBootstrapPeer ma = request (`_addBootstrapPeer` Just ma) >> pure ()
+
+deleteBootstrapPeer :: Multiaddr -> IPFS ()
+deleteBootstrapPeer ma = request (`_deleteBootstrapPeer` Just ma) >> pure ()
+
+getLocalIdentity :: IPFS PeerIdentity
+getLocalIdentity = request (`_getPeerIdentity` Nothing)
+
+getRemoteIdentity :: PeerID -> IPFS PeerIdentity
+getRemoteIdentity pid = request (`_getPeerIdentity` Just pid)

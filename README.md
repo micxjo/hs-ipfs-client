@@ -8,7 +8,6 @@ A Haskell client for the [IPFS](https://github.com/ipfs/ipfs) router api.
 {-# LANGUAGE OverloadedStrings #-}
 import           Prelude hiding (putStr, putStrLn)
 import           Control.Monad.Trans
-import           Control.Monad.Trans.Either
 import           Data.Text (pack)
 import           Data.Text.IO (putStr, putStrLn)
 import           Control.Lens
@@ -19,7 +18,7 @@ import           Control.Monad (void)
 import           Network.IPFS.Client
 
 main :: IO ()
-main = void $ runEitherT $ do
+main = void $ runIPFS "localhost" 5001 $ do
   v <- getVersion
   liftIO $ putStr "Router version: "
   liftIO $ case v ^. commit of
