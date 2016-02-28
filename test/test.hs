@@ -32,6 +32,10 @@ apiaryTests = testGroup "Apiary Tests"
       assertRequest (getBlockStat mh) BlockStat { _blockHash = mh
                                                 , _blockSize = 55
                                                 }
+
+  , testCase "getFileList" $ do
+      let mh = Multihash "QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
+      assertRequest (getFileList mh) (expectedFileList mh)
   ]
 
 expectedBootstrapList :: Vector Multiaddr
@@ -46,6 +50,18 @@ expectedBootstrapList = V.fromList $ map Multiaddr
   , "/ip4/178.62.61.185/tcp/4001/ipfs/QmSoLMeWqB7YGVLJN3pNLQpmmEk35v6wYtsMGLzSr5QBU3"
   , "/ip4/104.236.151.122/tcp/4001/ipfs/QmSoLju6m7xTh3DuokvT3886QRYqxAzb1kShaanJgW36yx"
   ]
+
+expectedFileList :: Multihash -> FileStat
+expectedFileList mh = FileStat { _fileStatHash = mh
+                               , _fileStatSize = 0
+                               , _fileStatType = Directory
+                               , _fileStatLinks = Just (V.singleton link)
+                               }
+  where link = FileLink { _fileLinkName = "cat.jpg"
+                        , _fileLinkHash = Multihash "Qmd286K6pohQcTKYqnS1YhWrCiS4gz7Xi34sdwMe9USZ7u"
+                        , _fileLinkSize = 443230
+                        , _fileLinkType = File
+                        }
 
 tests :: TestTree
 tests = testGroup "ipfs-client" [apiaryTests]

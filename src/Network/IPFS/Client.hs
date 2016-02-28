@@ -232,6 +232,55 @@ instance FromJSON BlockStat where
     _blockSize <- o .: "Size"
     pure BlockStat{..}
 
+data FileType = File
+              | Directory
+              deriving (Eq, Show, Read)
+
+instance FromJSON FileType where
+  parseJSON = withText "file type" $ \s ->
+    case s of
+      "File" -> pure File
+      "Directory" -> pure Directory
+      _ -> fail "invalid file type"
+
+data FileLink = FileLink { _fileLinkName :: !Text
+                         , _fileLinkHash :: !Multihash
+                         , _fileLinkSize :: !Int
+                         , _fileLinkType :: !FileType
+                         } deriving (Eq, Show)
+
+makeLenses ''FileLink
+
+instance FromJSON FileLink where
+  parseJSON = withObject "file link" $ \o -> do
+    _fileLinkName <- o .: "Name"
+    _fileLinkHash <- o .: "Hash"
+    _fileLinkSize <- o .: "Size"
+    _fileLinkType <- o .: "Type"
+    pure FileLink{..}
+
+data FileStat = FileStat { _fileStatHash :: !Multihash
+                         , _fileStatSize :: !Int
+                         , _fileStatType :: !FileType
+                         , _fileStatLinks :: !(Maybe (Vector FileLink))
+                         } deriving (Eq, Show)
+
+makeLenses ''FileStat
+
+instance FromJSON FileStat where
+  parseJSON = withObject "file stat" $ \o -> do
+    _fileStatHash <- o .: "Hash"
+    _fileStatSize <- o .: "Size"
+    _fileStatType <- o .: "Type"
+    _fileStatLinks <- o .: "Links"
+    pure FileStat{..}
+
+instance FromJSON (HashMap Multihash FileStat) where
+  parseJSON = withObject "ls reply" $ \o -> do
+    objs <- o .: "Objects"
+    objs & withObject "objs" (\obj ->
+      HM.fromList <$> forM (HM.toList obj) (kvApM (Multihash, parseJSON)))
+
 -- Servant's PlainText won't accept responses without a charset, which
 -- go-ipfs doesn't supply.
 data PlainerText = PlainerText
@@ -273,6 +322,8 @@ type API = (
       :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)
       :<|> ("links" :> Capture "objhash" Multihash
                     :> Get '[JSON] (Vector ObjectLink))))
+  :<|> ("file" :> "ls" :> QueryParam "arg" Multihash
+                       :> Get '[JSON] (HashMap Multihash FileStat))
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
   :<|> ("bootstrap" :> (
@@ -296,10 +347,11 @@ data Client = Client
                , _getLocalAddrs :: ServantReq (Vector Multiaddr)
                , _getBlock :: Maybe Multihash -> ServantReq ByteString
                , _getBlockStat :: Maybe Multihash -> ServantReq BlockStat
-
                , _getObjectStat :: Multihash -> ServantReq ObjectStat
                , _getObject :: Multihash -> ServantReq Object
                , _getObjectLinks :: Multihash -> ServantReq (Vector ObjectLink)
+               , _getFileList :: Maybe Multihash
+                              -> ServantReq (HashMap Multihash FileStat)
                , _getPins :: ServantReq (HashMap Multihash PinType)
                , _getLocalRefs :: ServantReq (Vector Multihash)
                , _getBootstrapList :: ServantReq (Vector Multiaddr)
@@ -316,6 +368,7 @@ mkClient req host port = Client{..}
          :<|> (_getPeers :<|> _getKnownAddrs :<|> _getLocalAddrs)
          :<|> (_getBlock :<|> _getBlockStat)
          :<|> (_getObjectStat :<|> _getObject :<|> _getObjectLinks)
+         :<|> _getFileList
          :<|> _getPins
          :<|> _getLocalRefs
          :<|> (_getBootstrapList
@@ -393,6 +446,11 @@ getObject mh = request (`_getObject` mh)
 
 getObjectLinks :: Multihash -> IPFS (Vector ObjectLink)
 getObjectLinks mh = request (`_getObjectLinks` mh)
+
+getFileList :: Multihash -> IPFS FileStat
+getFileList mh = do
+  resp <- request (`_getFileList` Just mh)
+  pure (snd (head (HM.toList resp)))
 
 getPins :: IPFS (HashMap Multihash PinType)
 getPins = request _getPins
