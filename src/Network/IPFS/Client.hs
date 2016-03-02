@@ -281,6 +281,22 @@ instance FromJSON (HashMap Multihash FileStat) where
     objs & withObject "objs" (\obj ->
       HM.fromList <$> forM (HM.toList obj) (kvApM (Multihash, parseJSON)))
 
+data BandwidthStats = BandwidthStats { _totalIn :: !Integer
+                                     , _totalOut :: !Integer
+                                     , _rateIn :: !Integer
+                                     , _rateOut :: !Integer
+                                     } deriving (Eq, Show)
+
+makeLenses ''BandwidthStats
+
+instance FromJSON BandwidthStats where
+  parseJSON = withObject "stats bw reply" $ \o -> do
+    _totalIn <- o .: "TotalIn"
+    _totalOut <- o .: "TotalOut"
+    _rateIn <- o .: "RateIn"
+    _rateOut <- o .: "RateOut"
+    pure BandwidthStats{..}
+
 -- Servant's PlainText won't accept responses without a charset, which
 -- go-ipfs doesn't supply.
 data PlainerText = PlainerText
@@ -332,6 +348,7 @@ type API = (
                   :> Post '[JSON] (Vector Multiaddr))
       :<|> ("rm" :> QueryParam "arg" Multiaddr
                  :> Post '[JSON] (Vector Multiaddr))))
+  :<|> ("stats" :> "bw" :> Get '[JSON] BandwidthStats)
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -359,6 +376,7 @@ data Client = Client
                                    -> ServantReq (Vector Multiaddr)
                , _deleteBootstrapPeer :: Maybe Multiaddr
                                       -> ServantReq (Vector Multiaddr)
+               , _getBandwidthStats :: ServantReq BandwidthStats
                , _getPeerIdentity :: Maybe PeerID -> ServantReq PeerIdentity
                }
 
@@ -374,6 +392,7 @@ mkClient req host port = Client{..}
          :<|> (_getBootstrapList
           :<|> _addBootstrapPeer
           :<|> _deleteBootstrapPeer)
+         :<|> _getBandwidthStats
          :<|> _getPeerIdentity
           ) = clientWithRoute api req (BaseUrl Http host port)
 
@@ -466,6 +485,9 @@ addBootstrapPeer ma = request (`_addBootstrapPeer` Just ma) >> pure ()
 
 deleteBootstrapPeer :: Multiaddr -> IPFS ()
 deleteBootstrapPeer ma = request (`_deleteBootstrapPeer` Just ma) >> pure ()
+
+getBandwidthStats :: IPFS BandwidthStats
+getBandwidthStats = request _getBandwidthStats
 
 getLocalIdentity :: IPFS PeerIdentity
 getLocalIdentity = request (`_getPeerIdentity` Nothing)
