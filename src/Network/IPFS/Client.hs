@@ -297,6 +297,13 @@ instance FromJSON BandwidthStats where
     _rateOut <- o .: "RateOut"
     pure BandwidthStats{..}
 
+newtype Path = Path { unPath :: Text }
+             deriving (Eq, Show)
+
+instance FromJSON Path where
+  parseJSON = withObject "path obj" $ \o ->
+    Path <$> o .: "Path"
+
 -- Servant's PlainText won't accept responses without a charset, which
 -- go-ipfs doesn't supply.
 data PlainerText = PlainerText
@@ -349,6 +356,7 @@ type API = (
       :<|> ("rm" :> QueryParam "arg" Multiaddr
                  :> Post '[JSON] (Vector Multiaddr))))
   :<|> ("stats" :> "bw" :> Get '[JSON] BandwidthStats)
+  :<|> ("name" :> "resolve" :> QueryParam "arg" Text :> Get '[JSON] Path)
   :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
 
 api :: Proxy API
@@ -377,6 +385,7 @@ data Client = Client
                , _deleteBootstrapPeer :: Maybe Multiaddr
                                       -> ServantReq (Vector Multiaddr)
                , _getBandwidthStats :: ServantReq BandwidthStats
+               , _resolveName :: Maybe Text -> ServantReq Path
                , _getPeerIdentity :: Maybe PeerID -> ServantReq PeerIdentity
                }
 
@@ -393,6 +402,7 @@ mkClient req host port = Client{..}
           :<|> _addBootstrapPeer
           :<|> _deleteBootstrapPeer)
          :<|> _getBandwidthStats
+         :<|> _resolveName
          :<|> _getPeerIdentity
           ) = clientWithRoute api req (BaseUrl Http host port)
 
@@ -488,6 +498,14 @@ deleteBootstrapPeer ma = request (`_deleteBootstrapPeer` Just ma) >> pure ()
 
 getBandwidthStats :: IPFS BandwidthStats
 getBandwidthStats = request _getBandwidthStats
+
+resolveName :: Text -> IPFS (Maybe Text)
+resolveName name = do
+  c <- ask
+  resp <- lift (runEitherT (_resolveName c (Just name)))
+  case resp of
+    Left _ -> pure Nothing
+    Right r -> pure (Just (unPath r))
 
 getLocalIdentity :: IPFS PeerIdentity
 getLocalIdentity = request (`_getPeerIdentity` Nothing)

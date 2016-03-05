@@ -36,6 +36,11 @@ apiaryTests = testGroup "Apiary Tests"
   , testCase "getFileList" $ do
       let mh = Multihash "QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
       assertRequest (getFileList mh) (expectedFileList mh)
+
+  , testCase "resolveName" $ do
+      let name = "QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
+      let path = "/ipfs/QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
+      assertRequest (resolveName name) (Just path)
   ]
 
 expectedBootstrapList :: Vector Multiaddr
