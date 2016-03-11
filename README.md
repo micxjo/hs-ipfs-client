@@ -15,28 +15,28 @@ import qualified Data.Vector as V
 import           Data.Monoid ((<>))
 import           Control.Monad (void)
 
-import           Network.IPFS.Client
+import           Network.IPFS
 
 main :: IO ()
 main = void $ runIPFS "localhost" 5001 $ do
   v <- getVersion
   liftIO $ putStr "Router version: "
-  liftIO $ case v ^. commit of
-    Nothing -> putStrLn (v ^. version)
-    Just commitText -> putStrLn ((v ^. version) <> "-" <> commitText)
+  liftIO $ case v ^. versionCommit of
+    Nothing -> putStrLn (v ^. versionText)
+    Just commitText -> putStrLn ((v ^. versionText) <> "-" <> commitText)
 
   localID <- getLocalIdentity
-  liftIO $ putStrLn ("Peer ID: " <> localID ^. peerID . peerHash)
-  liftIO $ putStrLn ("Protocol Version: " <> localID ^. protocolVersion)
+  liftIO $ putStrLn ("Peer ID: " <> localID ^. pidID . text)
+  liftIO $ putStrLn ("Protocol Version: " <> localID ^. pidProtocolVersion)
 
   addrs <- getLocalAddrs
   liftIO $ putStrLn "\nLocal addresses:"
-  liftIO $ V.forM_ addrs (putStrLn . view multiaddr)
+  liftIO $ V.forM_ addrs (\a -> putStrLn (a ^. text))
 
   let objHash = Multihash "QmRyWyKWmphamkMRnJVjUTzSFSAAZowYP4rnbgnfMXC9Mr"
   objStat <- getObjectStat objHash
   liftIO $ putStrLn "\nObject Stat:"
-  liftIO $ putStrLn ("Hash: " <> objHash ^. multihash)
-  liftIO $ putStrLn ("Num links: " <> pack (show (objStat ^. numLinks)))
-  liftIO $ putStrLn ("Data size: " <> pack (show (objStat ^. dataSize)))
+  liftIO $ putStrLn ("Hash: " <> objHash ^. text)
+  liftIO $ putStrLn ("Num links: " <> pack (show (objStat ^. oStatNumLinks)))
+  liftIO $ putStrLn ("Data size: " <> pack (show (objStat ^. oStatDataSize)))
 ```

@@ -5,7 +5,7 @@ import qualified Data.Vector as V
 import           Test.Tasty
 import           Test.Tasty.HUnit
 
-import           Network.IPFS.Client
+import           Network.IPFS
 
 runApiary :: IPFS a -> IO (Either IPFSError a)
 runApiary = runBareIPFS "private-7fa49-micxjo.apiary-mock.com" 80
@@ -29,8 +29,8 @@ apiaryTests = testGroup "Apiary Tests"
 
   , testCase "getBlockStat" $ do
       let mh = Multihash "QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
-      assertRequest (getBlockStat mh) BlockStat { _blockHash = mh
-                                                , _blockSize = 55
+      assertRequest (getBlockStat mh) BlockStat { _bStatHash = mh
+                                                , _bStatSize = 55
                                                 }
 
   , testCase "getFileList" $ do
@@ -57,15 +57,15 @@ expectedBootstrapList = V.fromList $ map Multiaddr
   ]
 
 expectedFileList :: Multihash -> FileStat
-expectedFileList mh = FileStat { _fileStatHash = mh
-                               , _fileStatSize = 0
-                               , _fileStatType = Directory
-                               , _fileStatLinks = Just (V.singleton link)
+expectedFileList mh = FileStat { _fStatHash = mh
+                               , _fStatSize = 0
+                               , _fStatType = Directory
+                               , _fStatLinks = Just (V.singleton link)
                                }
-  where link = FileLink { _fileLinkName = "cat.jpg"
-                        , _fileLinkHash = Multihash "Qmd286K6pohQcTKYqnS1YhWrCiS4gz7Xi34sdwMe9USZ7u"
-                        , _fileLinkSize = 443230
-                        , _fileLinkType = File
+  where link = FileLink { _fLinkName = "cat.jpg"
+                        , _fLinkHash = Multihash "Qmd286K6pohQcTKYqnS1YhWrCiS4gz7Xi34sdwMe9USZ7u"
+                        , _fLinkSize = 443230
+                        , _fLinkType = File
                         }
 
 tests :: TestTree
