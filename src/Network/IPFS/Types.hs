@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module Network.IPFS.Types where
 
+import           Control.Applicative ((<|>))
 import           Control.Monad (forM)
 import           Data.Data (Data)
 import           Data.Typeable (Typeable)
@@ -40,12 +41,13 @@ instance FromJSON Multiaddr where
 instance ToHttpApiData Multiaddr where
   toUrlPiece (Multiaddr ma) = ma
 
-newtype PeerList = PeerList { unPeerList :: Vector Multiaddr }
+newtype PeersResponse = PeersResponse { unPeersResponse :: Vector Multiaddr }
+                 deriving (Show)
 
-instance FromJSON PeerList where
+instance FromJSON PeersResponse where
   parseJSON (A.Object o) = do
-    v <- o .: "Peers"
-    PeerList <$> V.mapM parseJSON v
+    v <- o .: "Peers" <|> o .: "Strings"
+    PeersResponse <$> V.mapM parseJSON v
 
   parseJSON _ = fail "expected an object with 'Peers' key"
 

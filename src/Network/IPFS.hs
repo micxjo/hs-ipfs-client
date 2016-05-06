@@ -79,7 +79,7 @@ instance MimeUnrender BlockEncoding ByteString where
 type API = Header "Prefer" Text :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
-           ("peers" :> Get '[JSON] (Vector Multiaddr))
+           ("peers" :> Get '[JSON] PeersResponse)
       :<|> ("addrs" :> Get '[JSON] (HashMap PeerID (Vector Multiaddr)))
       :<|> ("addrs" :> "local" :> Get '[JSON] (Vector Multiaddr))))
   :<|> ("block" :> (
@@ -97,7 +97,7 @@ type API = Header "Prefer" Text :> (
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
   :<|> ("bootstrap" :> (
-           ("list" :> Get '[JSON] PeerList)
+           ("list" :> Get '[JSON] PeersResponse)
       :<|> ("add" :> QueryParam "arg" Multiaddr
                   :> Post '[JSON] (Vector Multiaddr))
       :<|> ("rm" :> QueryParam "arg" Multiaddr
@@ -165,7 +165,7 @@ getVersion :: IPFS Version
 getVersion = request _getVersion
 
 getPeers :: IPFS (Vector Multiaddr)
-getPeers = request _getPeers
+getPeers = unPeersResponse <$> request _getPeers
 
 getKnownAddrs :: IPFS (HashMap PeerID (Vector Multiaddr))
 getKnownAddrs = request _getKnownAddrs
@@ -200,7 +200,7 @@ getLocalRefs :: IPFS (Vector Multihash)
 getLocalRefs = request _getLocalRefs
 
 getBootstrapList :: IPFS (Vector Multiaddr)
-getBootstrapList = unPeerList <$> request _getBootstrapList
+getBootstrapList = unPeersResponse <$> request _getBootstrapList
 
 addBootstrapPeer :: Multiaddr -> IPFS ()
 addBootstrapPeer ma = request (_addBootstrapPeer (Just ma)) >> pure ()
