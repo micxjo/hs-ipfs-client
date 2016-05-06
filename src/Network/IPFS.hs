@@ -8,7 +8,7 @@
 module Network.IPFS ( module Network.IPFS.Types
                     , IPFS
                     , runIPFS
-                    , runBareIPFS
+                    , runIPFS'
                     , getVersion
                     , getPeers
                     , getLocalAddrs
@@ -33,7 +33,6 @@ module Network.IPFS ( module Network.IPFS.Types
 import           Control.Error (fmapL)
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import           Control.Monad.Trans.Either
 import           Data.ByteString.Lazy (ByteString, toStrict)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -43,10 +42,9 @@ import qualified Data.Text as T
 import           Data.Text.Encoding (decodeUtf8')
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
+import           Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
 import           Servant.API
 import           Servant.Client hiding (Client)
-import           Servant.Common.Req (Req)
-import qualified Servant.Common.Req as Req
 
 import           Network.IPFS.Types
 
@@ -75,7 +73,10 @@ instance Accept BlockEncoding where
 instance MimeUnrender BlockEncoding ByteString where
   mimeUnrender _ = pure
 
-type API = (
+-- The "Prefer" header is used to force the apiary.io mock server
+-- to return a specific result.
+
+type API = Header "Prefer" Text :> (
        ("version" :> Get '[JSON] Version)
   :<|> ("swarm" :> (
            ("peers" :> Get '[JSON] (Vector Multiaddr))
@@ -96,7 +97,7 @@ type API = (
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
   :<|> ("refs" :> "local" :> Get '[PlainerText] (Vector Multihash))
   :<|> ("bootstrap" :> (
-           ("list" :> Get '[JSON] (Vector Multiaddr))
+           ("list" :> Get '[JSON] PeerList)
       :<|> ("add" :> QueryParam "arg" Multiaddr
                   :> Post '[JSON] (Vector Multiaddr))
       :<|> ("rm" :> QueryParam "arg" Multiaddr
@@ -108,89 +109,54 @@ type API = (
 api :: Proxy API
 api = Proxy
 
-type ServantReq = EitherT ServantError IO
+(_getVersion
+  :<|> (_getPeers :<|> _getKnownAddrs :<|> _getLocalAddrs)
+  :<|> (_getBlock :<|> _getBlockStat)
+  :<|> (_getObjectStat :<|> _getObject :<|> _getObjectLinks)
+  :<|> _getFileList
+  :<|> _getPins
+  :<|> _getLocalRefs
+  :<|> (_getBootstrapList
+         :<|> _addBootstrapPeer
+         :<|> _deleteBootstrapPeer)
+  :<|> _getBandwidthStats
+  :<|> _resolveName
+  :<|> _getPeerIdentity
+  ) = client api (Just "status=200")
 
-data Client = Client
-              { _getVersion :: ServantReq Version
-              , _getPeers :: ServantReq (Vector Multiaddr)
-              , _getKnownAddrs :: ServantReq (
-                  HashMap PeerID (Vector Multiaddr))
-              , _getLocalAddrs :: ServantReq (Vector Multiaddr)
-              , _getBlock :: Maybe Multihash -> ServantReq ByteString
-              , _getBlockStat :: Maybe Multihash -> ServantReq BlockStat
-              , _getObjectStat :: Multihash -> ServantReq ObjectStat
-              , _getObject :: Multihash -> ServantReq Object
-              , _getObjectLinks :: Multihash -> ServantReq (Vector ObjectLink)
-              , _getFileList :: Maybe Multihash
-                                -> ServantReq (HashMap Multihash FileStat)
-              , _getPins :: ServantReq (HashMap Multihash PinType)
-              , _getLocalRefs :: ServantReq (Vector Multihash)
-              , _getBootstrapList :: ServantReq (Vector Multiaddr)
-              , _addBootstrapPeer :: Maybe Multiaddr
-                                     -> ServantReq (Vector Multiaddr)
-              , _deleteBootstrapPeer :: Maybe Multiaddr
-                                        -> ServantReq (Vector Multiaddr)
-              , _getBandwidthStats :: ServantReq BandwidthStats
-              , _resolveName :: Maybe Text -> ServantReq Path
-              , _getPeerIdentity :: Maybe PeerID -> ServantReq PeerIdentity
-              }
-
-mkClient :: Req -> String -> Int -> Client
-mkClient req host port = Client{..}
-  where (_getVersion
-         :<|> (_getPeers :<|> _getKnownAddrs :<|> _getLocalAddrs)
-         :<|> (_getBlock :<|> _getBlockStat)
-         :<|> (_getObjectStat :<|> _getObject :<|> _getObjectLinks)
-         :<|> _getFileList
-         :<|> _getPins
-         :<|> _getLocalRefs
-         :<|> (_getBootstrapList
-          :<|> _addBootstrapPeer
-          :<|> _deleteBootstrapPeer)
-         :<|> _getBandwidthStats
-         :<|> _resolveName
-         :<|> _getPeerIdentity
-          ) = clientWithRoute api req (BaseUrl Http host port)
-
-newtype IPFST m a = IPFS { unIPFS :: ReaderT Client (EitherT ServantError m) a }
+newtype IPFST m a = IPFST { unIPFS :: ReaderT (Manager, BaseUrl) (ExceptT ServantError m) a}
   deriving ( Functor
            , Applicative
            , Monad
            , MonadIO
-           , MonadReader Client
+           , MonadReader (Manager, BaseUrl)
            , MonadError ServantError
            )
 
 instance MonadTrans IPFST where
-  lift = IPFS . lift . lift
+  lift = IPFST . lift . lift
 
 type IPFS a = IPFST IO a
 
-baseReq :: Req
-baseReq = Req.addHeader "Prefer" ("status=200" :: Text) Req.defReq
+runIPFST' :: MonadIO m => BaseUrl -> IPFST m a -> m (Either IPFSError a)
+runIPFST' url ipfs = do
+  manager <- liftIO $ newManager defaultManagerSettings
+  runExceptT (runReaderT (unIPFS ipfs) (manager, url))
 
 runIPFST :: MonadIO m => String -> Int -> IPFST m a -> m (Either IPFSError a)
-runIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
-  where cl = mkClient (Req.appendToPath "api/v0" baseReq) host port
+runIPFST host port =
+  runIPFST' (BaseUrl Http host port "/api/v0")
+
+runIPFS' :: BaseUrl -> IPFS a -> IO (Either IPFSError a)
+runIPFS' = runIPFST'
 
 runIPFS :: String -> Int -> IPFS a -> IO (Either IPFSError a)
 runIPFS = runIPFST
 
-runBareIPFST :: MonadIO m
-                => String
-                -> Int
-                -> IPFST m a
-                -> m (Either IPFSError a)
-runBareIPFST host port ipfs = runEitherT (runReaderT (unIPFS ipfs) cl)
-  where cl = mkClient baseReq host port
-
-runBareIPFS :: String -> Int -> IPFS a -> IO (Either IPFSError a)
-runBareIPFS = runBareIPFST
-
-request :: Monad m => (Client -> EitherT ServantError m a) -> IPFST m a
+request :: Monad m => (Manager -> BaseUrl -> ExceptT ServantError m a) -> IPFST m a
 request cmd = do
-  c <- ask
-  resp <- lift (runEitherT (cmd c))
+  (manager, url) <- ask
+  resp <- lift (runExceptT (cmd manager url))
   case resp of
     Left l -> throwError l
     Right r -> pure r
@@ -208,23 +174,23 @@ getLocalAddrs :: IPFS (Vector Multiaddr)
 getLocalAddrs = request _getLocalAddrs
 
 getBlock :: Multihash -> IPFS ByteString
-getBlock mh = request (`_getBlock` Just mh)
+getBlock mh = request (_getBlock (Just mh))
 
 getBlockStat :: Multihash -> IPFS BlockStat
-getBlockStat mh = request (`_getBlockStat` Just mh)
+getBlockStat mh = request (_getBlockStat (Just mh))
 
 getObjectStat :: Multihash -> IPFS ObjectStat
-getObjectStat mh = request (`_getObjectStat` mh)
+getObjectStat mh = request (_getObjectStat mh)
 
 getObject :: Multihash -> IPFS Object
-getObject mh = request (`_getObject` mh)
+getObject mh = request (_getObject mh)
 
 getObjectLinks :: Multihash -> IPFS (Vector ObjectLink)
-getObjectLinks mh = request (`_getObjectLinks` mh)
+getObjectLinks mh = request (_getObjectLinks mh)
 
 getFileList :: Multihash -> IPFS FileStat
 getFileList mh = do
-  resp <- request (`_getFileList` Just mh)
+  resp <- request (_getFileList (Just mh))
   pure (snd (head (HM.toList resp)))
 
 getPins :: IPFS (HashMap Multihash PinType)
@@ -234,27 +200,27 @@ getLocalRefs :: IPFS (Vector Multihash)
 getLocalRefs = request _getLocalRefs
 
 getBootstrapList :: IPFS (Vector Multiaddr)
-getBootstrapList = request _getBootstrapList
+getBootstrapList = unPeerList <$> request _getBootstrapList
 
 addBootstrapPeer :: Multiaddr -> IPFS ()
-addBootstrapPeer ma = request (`_addBootstrapPeer` Just ma) >> pure ()
+addBootstrapPeer ma = request (_addBootstrapPeer (Just ma)) >> pure ()
 
 deleteBootstrapPeer :: Multiaddr -> IPFS ()
-deleteBootstrapPeer ma = request (`_deleteBootstrapPeer` Just ma) >> pure ()
+deleteBootstrapPeer ma = request (_deleteBootstrapPeer (Just ma)) >> pure ()
 
 getBandwidthStats :: IPFS BandwidthStats
 getBandwidthStats = request _getBandwidthStats
 
 resolveName :: Text -> IPFS (Maybe Text)
 resolveName name = do
-  c <- ask
-  resp <- lift (runEitherT (_resolveName c (Just name)))
+  (manager, url) <- ask
+  resp <- lift (runExceptT (_resolveName (Just name) manager url))
   case resp of
     Left _ -> pure Nothing
     Right (Path r) -> pure (Just r)
 
 getLocalIdentity :: IPFS PeerIdentity
-getLocalIdentity = request (`_getPeerIdentity` Nothing)
+getLocalIdentity = request (_getPeerIdentity Nothing)
 
 getRemoteIdentity :: PeerID -> IPFS PeerIdentity
-getRemoteIdentity pid = request (`_getPeerIdentity` Just pid)
+getRemoteIdentity pid = request (_getPeerIdentity (Just pid))

@@ -9,7 +9,6 @@
 {-# LANGUAGE TypeFamilies #-}
 module Network.IPFS.Types where
 
-import           Control.Applicative ((<|>))
 import           Control.Monad (forM)
 import           Data.Data (Data)
 import           Data.Typeable (Typeable)
@@ -27,8 +26,8 @@ import           Data.Text (Text)
 import           Data.Text.Encoding (encodeUtf8Builder)
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
-import           Servant.API (ToText(..))
 import           Servant.Client (ServantError)
+import           Web.HttpApiData (ToHttpApiData(..))
 
 type IPFSError = ServantError
 
@@ -38,19 +37,17 @@ newtype Multiaddr = Multiaddr { unMultiaddr :: Text }
 instance FromJSON Multiaddr where
   parseJSON = withText "multiaddr" (pure . Multiaddr)
 
-instance ToText Multiaddr where
-  toText (Multiaddr ma) = ma
+instance ToHttpApiData Multiaddr where
+  toUrlPiece (Multiaddr ma) = ma
 
-instance FromJSON (Vector Multiaddr) where
-  -- Sometimes a list of multiaddrs comes wrapped in an object's "Strings"
-  -- or "Peers" key, e.g. for swarm/peers.
+newtype PeerList = PeerList { unPeerList :: Vector Multiaddr }
+
+instance FromJSON PeerList where
   parseJSON (A.Object o) = do
-    v <- o .: "Peers" <|> o .: "Strings"
-    V.mapM parseJSON v
+    v <- o .: "Peers"
+    PeerList <$> V.mapM parseJSON v
 
-  parseJSON (Array a) = V.mapM parseJSON a
-
-  parseJSON _ = fail "expected an object or array"
+  parseJSON _ = fail "expected an object with 'Peers' key"
 
 newtype Multihash = Multihash { unMultihash :: Text }
                   deriving (Eq, Show, Read, Hashable, Typeable, Data, Generic)
@@ -58,8 +55,8 @@ newtype Multihash = Multihash { unMultihash :: Text }
 instance FromJSON Multihash where
   parseJSON = withText "multihash" (pure . Multihash)
 
-instance ToText Multihash where
-  toText (Multihash t) = t
+instance ToHttpApiData Multihash where
+  toUrlPiece (Multihash t) = t
 
 newtype PeerID = PeerID { unPeerID :: Text }
                deriving (Eq, Show, Read, Hashable, Typeable, Data, Generic)
@@ -67,8 +64,8 @@ newtype PeerID = PeerID { unPeerID :: Text }
 instance FromJSON PeerID where
   parseJSON = withText "peerID" (pure . PeerID)
 
-instance ToText PeerID where
-  toText (PeerID t) = t
+instance ToHttpApiData PeerID where
+  toUrlPiece (PeerID t) = t
 
 newtype Path = Path Text
              deriving (Eq, Show, Read, Hashable, Typeable, Data, Generic)
@@ -163,19 +160,6 @@ instance FromJSON ObjectLink where
     _oLinkSize <- o .: "Size"
     pure ObjectLink{..}
 
-instance FromJSON (Vector ObjectLink) where
-  -- Support pulling from an object with a "Links" key, as returned
-  -- by object/links.
-  -- Is this appropriate? Should we break the objects/links response
-  -- handling into a newtype to make this behaviour more transparent?
-  parseJSON (A.Object o) = do
-    links <- o .: "Links"
-    parseJSON links
-
-  parseJSON (Array a) = V.mapM parseJSON a
-
-  parseJSON _ = fail "expected object or array"
-
 data Version = Version
                { _versionText :: !Text
                , _versionCommit :: !(Maybe Text)
@@ -232,11 +216,11 @@ instance FromJSON PinType where
 
   parseJSON _ = fail "expected string or object"
 
-instance ToText PinType where
-  toText Direct = "direct"
-  toText Indirect = "indirect"
-  toText Recursive = "recursive"
-  toText All = "all"
+instance ToHttpApiData PinType where
+  toUrlPiece Direct = "direct"
+  toUrlPiece Indirect = "indirect"
+  toUrlPiece Recursive = "recursive"
+  toUrlPiece All = "all"
 
 instance FromJSON (HashMap Multihash PinType) where
   parseJSON = withObject "pin map" $ \o -> do

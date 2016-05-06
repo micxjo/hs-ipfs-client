@@ -2,13 +2,14 @@
 
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
+import           Servant.Common.BaseUrl
 import           Test.Tasty
 import           Test.Tasty.HUnit
 
 import           Network.IPFS
 
 runApiary :: IPFS a -> IO (Either IPFSError a)
-runApiary = runBareIPFS "private-7fa49-micxjo.apiary-mock.com" 80
+runApiary = runIPFS' (BaseUrl Http "private-7fa49-micxjo.apiary-mock.com" 80 "")
 
 assertRequest :: (Eq a, Show a) => IPFS a -> a -> Assertion
 assertRequest req expected = do
