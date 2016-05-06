@@ -162,6 +162,15 @@ instance FromJSON ObjectLink where
     _oLinkSize <- o .: "Size"
     pure ObjectLink{..}
 
+newtype ObjectLinksResponse =
+  ObjectLinksResponse { unObjectLinksResponse :: Vector ObjectLink
+                      } deriving (Show)
+
+instance FromJSON ObjectLinksResponse where
+  parseJSON (A.Object o) = ObjectLinksResponse <$> o .: "Links"
+
+  parseJSON _ = fail "expected an object with 'Links' key"
+
 data Version = Version
                { _versionText :: !Text
                , _versionCommit :: !(Maybe Text)

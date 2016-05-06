@@ -91,7 +91,7 @@ type API = Header "Prefer" Text :> (
            ("stat" :> Capture "objhash" Multihash :> Get '[JSON] ObjectStat)
       :<|> ("get" :> Capture "objhash" Multihash :> Get '[JSON] Object)
       :<|> ("links" :> Capture "objhash" Multihash
-                    :> Get '[JSON] (Vector ObjectLink))))
+                    :> Get '[JSON] ObjectLinksResponse)))
   :<|> ("file" :> "ls" :> QueryParam "arg" Multihash
                        :> Get '[JSON] (HashMap Multihash FileStat))
   :<|> ("pin" :> "ls" :> Get '[JSON] (HashMap Multihash PinType))
@@ -186,7 +186,7 @@ getObject :: Multihash -> IPFS Object
 getObject mh = request (_getObject mh)
 
 getObjectLinks :: Multihash -> IPFS (Vector ObjectLink)
-getObjectLinks mh = request (_getObjectLinks mh)
+getObjectLinks mh = unObjectLinksResponse <$> request (_getObjectLinks mh)
 
 getFileList :: Multihash -> IPFS FileStat
 getFileList mh = do
