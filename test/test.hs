@@ -5,6 +5,7 @@ import qualified Data.Vector as V
 import           Servant.Common.BaseUrl
 import           Test.Tasty
 import           Test.Tasty.HUnit
+import qualified Data.Aeson as A
 
 import           Network.IPFS
 
@@ -42,6 +43,9 @@ apiaryTests = testGroup "Apiary Tests"
       let name = "QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
       let path = "/ipfs/QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ"
       assertRequest (resolveName name) (Just path)
+
+  , testCase "getConfigValue" $ do
+      assertRequest (getConfigValue "API.HTTPHeaders") A.Null
   ]
 
 expectedBootstrapList :: Vector Multiaddr

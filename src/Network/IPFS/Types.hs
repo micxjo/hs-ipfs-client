@@ -315,6 +315,16 @@ instance FromJSON BandwidthStats where
     _bwRateOut <- o .: "RateOut"
     pure BandwidthStats{..}
 
+data ConfigResponse = ConfigResponse { _configKey :: !Text
+                                     , _configValue :: !Value
+                                     } deriving (Eq, Show)
+
+instance FromJSON ConfigResponse where
+  parseJSON = withObject "config response" $ \o -> do
+    _configKey <- o .: "Key"
+    _configValue <- o .: "Value"
+    pure ConfigResponse{..}
+
 class HasMultihash a where
   multihash :: Lens' a Multihash
 instance HasMultihash ObjectStat where

@@ -28,11 +28,13 @@ module Network.IPFS ( module Network.IPFS.Types
                     , resolveName
                     , getLocalIdentity
                     , getRemoteIdentity
+                    , getConfigValue
                     ) where
 
 import           Control.Error (fmapL)
 import           Control.Monad.Except
 import           Control.Monad.Reader
+import qualified Data.Aeson as A
 import           Data.ByteString.Lazy (ByteString, toStrict)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -104,7 +106,8 @@ type API = Header "Prefer" Text :> (
                  :> Post '[JSON] (Vector Multiaddr))))
   :<|> ("stats" :> "bw" :> Get '[JSON] BandwidthStats)
   :<|> ("name" :> "resolve" :> QueryParam "arg" Text :> Get '[JSON] Path)
-  :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity))
+  :<|> ("id" :> QueryParam "arg" PeerID :> Get '[JSON] PeerIdentity)
+  :<|> ("config" :> QueryParam "arg" Text :> Post '[JSON] ConfigResponse))
 
 api :: Proxy API
 api = Proxy
@@ -122,6 +125,7 @@ api = Proxy
   :<|> _getBandwidthStats
   :<|> _resolveName
   :<|> _getPeerIdentity
+  :<|> _getConfigValue
   ) = client api (Just "status=200")
 
 newtype IPFST m a = IPFST { unIPFS :: ReaderT (Manager, BaseUrl) (ExceptT ServantError m) a}
@@ -224,3 +228,6 @@ getLocalIdentity = request (_getPeerIdentity Nothing)
 
 getRemoteIdentity :: PeerID -> IPFS PeerIdentity
 getRemoteIdentity pid = request (_getPeerIdentity (Just pid))
+
+getConfigValue :: Text -> IPFS A.Value
+getConfigValue key = _configValue <$> request (_getConfigValue (Just key))
