@@ -19,7 +19,7 @@ assertRequest req expected = do
 apiaryTests :: TestTree
 apiaryTests = testGroup "Apiary Tests"
   [ testCase "getVersion" $
-      assertRequest getVersion (Version "0.4.0-dev" Nothing)
+      assertRequest getVersion (Version "0.4.0-dev" Nothing "3")
 
   , testCase "getBootstrapList" $
       assertRequest getBootstrapList expectedBootstrapList

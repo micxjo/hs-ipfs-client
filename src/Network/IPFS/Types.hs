@@ -174,6 +174,7 @@ instance FromJSON ObjectLinksResponse where
 data Version = Version
                { _versionText :: !Text
                , _versionCommit :: !(Maybe Text)
+               , _versionRepo :: !Text
                } deriving (Eq, Show, Read, Typeable, Data, Generic)
 
 instance Hashable Version where
@@ -188,6 +189,7 @@ instance FromJSON Version where
           Nothing -> Nothing
           Just "" -> Nothing
           _ -> commitText
+    _versionRepo <- o .: "Repo"
     pure Version{..}
 
 data Object = Object
