@@ -52,7 +52,7 @@ import           Network.IPFS.Types
 
 -- Servant's PlainText won't accept responses without a charset, which
 -- go-ipfs doesn't supply.
-data PlainerText = PlainerText
+data PlainerText
 
 instance Accept PlainerText where
   contentType _ = "text/plain"
@@ -67,7 +67,7 @@ instance MimeUnrender PlainerText (Vector Multihash) where
 -- The OctetStream encoding instance won't accept "text/plain" and
 -- there's no (MimeUnrender PlainText ByteString) instance, so we
 -- create this simple encoding.
-data BlockEncoding = BlockEncoding
+data BlockEncoding
 
 instance Accept BlockEncoding where
   contentType _ = "text/plain"
