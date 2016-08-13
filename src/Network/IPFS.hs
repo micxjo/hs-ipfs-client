@@ -112,6 +112,26 @@ type API = Header "Prefer" Text :> (
 api :: Proxy API
 api = Proxy
 
+_getPeerIdentity :: Maybe PeerID -> Manager -> BaseUrl -> ClientM PeerIdentity
+_resolveName :: Maybe Text -> Manager -> BaseUrl -> ClientM Path
+_getBandwidthStats :: Manager -> BaseUrl -> ClientM BandwidthStats
+_deleteBootstrapPeer :: Maybe Multiaddr -> Manager -> BaseUrl -> ClientM (Vector Multiaddr)
+_addBootstrapPeer :: Maybe Multiaddr -> Manager -> BaseUrl -> ClientM (Vector Multiaddr)
+_getBootstrapList :: Manager -> BaseUrl -> ClientM PeersResponse
+_getLocalRefs :: Manager -> BaseUrl -> ClientM (Vector Multihash)
+_getPins :: Manager -> BaseUrl -> ClientM (HashMap Multihash PinType)
+_getFileList :: Maybe Multihash -> Manager -> BaseUrl -> ClientM (HashMap Multihash FileStat)
+_getObjectLinks :: Multihash -> Manager -> BaseUrl -> ClientM ObjectLinksResponse
+_getObject :: Multihash -> Manager -> BaseUrl -> ClientM Object
+_getObjectStat :: Multihash -> Manager -> BaseUrl -> ClientM ObjectStat
+_getBlockStat :: Maybe Multihash -> Manager -> BaseUrl -> ClientM BlockStat
+_getBlock :: Maybe Multihash -> Manager -> BaseUrl -> ClientM ByteString
+_getLocalAddrs :: Manager -> BaseUrl -> ClientM (Vector Multiaddr)
+_getKnownAddrs :: Manager -> BaseUrl -> ClientM (HashMap PeerID (Vector Multiaddr))
+_getPeers :: Manager -> BaseUrl -> ClientM PeersResponse
+_getVersion :: Manager -> BaseUrl -> ClientM Version
+_getConfigValue :: Maybe Text -> Manager -> BaseUrl -> ClientM ConfigResponse
+
 (_getVersion
   :<|> (_getPeers :<|> _getKnownAddrs :<|> _getLocalAddrs)
   :<|> (_getBlock :<|> _getBlockStat)
